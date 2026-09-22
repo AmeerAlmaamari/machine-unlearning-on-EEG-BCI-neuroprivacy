@@ -1,19 +1,3 @@
-"""SISA training engine: sharding, slicing (with disk checkpoints), aggregation.
-
-Two sharding modes:
-  - "subject_aware": each subject is assigned to exactly ONE shard; a constituent
-    is an MLP over only that shard's subjects. Unlearning a subject -> retrain one
-    shard. Slices are subject-contiguous (each subject lives in one slice), so a
-    subject can be removed by resuming from the checkpoint before its slice.
-  - "uniform": training windows are assigned to shards at random; every shard
-    sees all subjects (a 1/S fraction of each). Unlearning a subject touches all
-    shards (the failure mode we contrast against).
-
-Verification scores are assembled into an [n, n_subjects] matrix:
-  - subject_aware: column for subject X comes from the one shard that owns X.
-  - uniform: column X is averaged across all shards.
-Both are then fed to metrics.verification_report.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,20 +7,10 @@ import torch
 
 from src import config, model
 
-
 def shard_tag(mode: str, S: int, R: int, seed: int) -> str:
     return f"{mode}_S{S}_R{R}_seed{seed}"
 
-
 def make_shards(sid_tr: np.ndarray, S: int, R: int, mode: str, seed: int):
-    """Build shard specs over the training rows.
-
-    Returns (shards, subject_to_shard). Each shard is a dict with:
-      classes      : sorted subject ids the constituent predicts
-      slice_rows   : list of row-index arrays (into the train arrays), one per slice
-      slice_subjects : (subject_aware only) subject ids per slice
-    subject_to_shard maps subject_id -> shard index (subject_aware) or {} (uniform).
-    """
     rng = np.random.default_rng(seed)
     all_subjects = np.array(sorted(np.unique(sid_tr)))
     shards: list[dict] = []
@@ -69,16 +43,12 @@ def make_shards(sid_tr: np.ndarray, S: int, R: int, mode: str, seed: int):
 
     return shards, subject_to_shard
 
-
 def assert_subject_aware_partition(shards, all_subjects) -> None:
-    """Every subject appears in exactly one shard."""
     seen = np.concatenate([sh["classes"] for sh in shards])
     assert len(seen) == len(np.unique(seen)), "a subject appears in >1 shard"
     assert set(seen.tolist()) == set(int(s) for s in all_subjects), "subjects missing"
 
-
 def train_constituents(shards, Xtr, sid_tr, Xval, sid_val, *, device, seed, ckpt_dir):
-    """Train one constituent per shard with slicing; checkpoint each slice to disk."""
     ckpt_dir = Path(ckpt_dir)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     constituents = []
@@ -104,18 +74,14 @@ def train_constituents(shards, Xtr, sid_tr, Xval, sid_val, *, device, seed, ckpt
         constituents.append({"model": net, "classes": classes, "ckpts": ckpts})
     return constituents
 
-
 def load_checkpoint(path, device="cpu"):
-    """Reload a saved slice checkpoint into an MLP."""
     blob = torch.load(path, map_location=device, weights_only=False)
     classes = blob["classes"]
     net = model.MLP(config.N_FEATURES, len(classes)).to(device)
     net.load_state_dict({k: v.to(device) for k, v in blob["state"].items()})
     return net, classes
 
-
 def score_matrix(constituents, mode, X, all_classes, device) -> np.ndarray:
-    """Assemble an [n, n_subjects] verification score matrix from constituents."""
     n = len(X)
     col_of = {int(s): i for i, s in enumerate(all_classes)}
     if mode == "subject_aware":
@@ -125,7 +91,7 @@ def score_matrix(constituents, mode, X, all_classes, device) -> np.ndarray:
             for j, s in enumerate(c["classes"]):
                 M[:, col_of[int(s)]] = probs[:, j]
         return M
-    # uniform: average the (all-class) probabilities across shards
+
     acc = np.zeros((n, len(all_classes)), dtype=np.float64)
     for c in constituents:
         probs = model.predict_proba(c["model"], X, device=device)

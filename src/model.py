@@ -1,9 +1,3 @@
-"""MLP constituent model + training/inference helpers (PyTorch, GPU-aware).
-
-A single MLP maps 320 band-power features -> softmax over the subjects it was
-trained on. For the monolithic baseline that is all 103 subjects; for SISA
-constituents (Phase 5) it is the subjects in one shard.
-"""
 from __future__ import annotations
 
 import numpy as np
@@ -11,7 +5,6 @@ import torch
 from torch import nn
 
 from src import config
-
 
 class MLP(nn.Module):
     def __init__(self, in_dim: int, n_classes: int,
@@ -27,22 +20,12 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
 def encode_labels(subject_ids: np.ndarray, classes: np.ndarray) -> np.ndarray:
-    """Map subject ids to 0..K-1 column indices given the model's class list."""
     return np.searchsorted(classes, subject_ids)
-
 
 def train_mlp(Xtr, ytr, Xval, yval, n_classes, *, epochs=None, batch=None,
               lr=None, patience=5, device=None, seed=None, init_state=None,
               return_info=False):
-    """Train an MLP with early stopping on validation loss. Returns the model.
-
-    init_state : optional state_dict to warm-start from (used by SISA slicing to
-    continue training from the previous slice's checkpoint).
-    return_info : if True, return (model, info) where info has 'epochs_run' and
-    'n_samples' (for measuring unlearning retraining cost).
-    """
     epochs = epochs or config.MLP_EPOCHS
     batch = batch or config.MLP_BATCH_SIZE
     lr = lr or config.MLP_LR
@@ -90,7 +73,6 @@ def train_mlp(Xtr, ytr, Xval, yval, n_classes, *, epochs=None, batch=None,
         return model, {"epochs_run": epochs_run, "n_samples": n}
     return model
 
-
 def predict_proba(model, X, device=None, batch=8192) -> np.ndarray:
     device = device or next(model.parameters()).device
     model.eval()
@@ -101,10 +83,7 @@ def predict_proba(model, X, device=None, batch=8192) -> np.ndarray:
             out.append(torch.softmax(model(xb), dim=1).cpu().numpy())
     return np.concatenate(out, axis=0)
 
-
 def embed(model, X, device=None, batch=8192) -> np.ndarray:
-    """Penultimate-layer embeddings (before the final linear). Used by the
-    representation-level re-identification attack in the forgetting evaluation."""
     device = device or next(model.parameters()).device
     model.eval()
     out = []

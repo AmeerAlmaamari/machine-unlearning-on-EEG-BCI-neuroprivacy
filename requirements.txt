@@ -1,12 +1,7 @@
-# Python 3.10. Versions pinned to the environment used for the paper.
-# GPU (CUDA 12.1) is recommended; the pipeline also runs on CPU.
 numpy==1.24.3
 pandas==2.3.3
 scipy==1.15.2
 scikit-learn==1.7.2
 matplotlib==3.10.8
 pyarrow==22.0.0
-# Install the CUDA 12.1 build of torch from the PyTorch index, e.g.:
-#   pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
-# On CPU-only machines, a plain `pip install torch==2.5.1` is sufficient.
 torch==2.5.1
