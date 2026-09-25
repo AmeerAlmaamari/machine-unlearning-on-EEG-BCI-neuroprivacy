@@ -1,4 +1,4 @@
-# Forgetting Is Not Anonymity — code
+# Forgetting Is Not Anonymity code
 
 Implementation and experiments for the paper on exact machine unlearning for
 EEG-based authentication, on the curated PhysioNet EEG Motor Movement/Imagery
